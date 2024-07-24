@@ -1,5 +1,4 @@
 import sys
-import socket
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit
 )
@@ -9,30 +8,31 @@ from PySide6.QtGui import QFont, QFontDatabase
 class ControlWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Control Window")
+        self.setWindowTitle("WetR App by Stefan Karaga")
         self.setFixedSize(QSize(400, 300))
 
         # Load custom font
-        font_id = QFontDatabase.addApplicationFont(r"C:\Users\Stefan\Documents\priums2\Anton.ttf")
+        font_id = QFontDatabase.addApplicationFont(r"C:\Users\Stefan\Documents\Arduino\priums2\BebasNeue-Regular.ttf")
         if font_id == -1:
             print("Failed to load font!")
             return
         font_family = QFontDatabase.applicationFontFamilies(font_id)[0]
-        anton_font = QFont(font_family, 16)
+        anton_font = QFont(font_family, 15)
 
         # Create widgets for the first group
-        self.label = QLabel("Izaberite mikrokontroler: ")
+        self.label = QLabel("Izaberi mikrokontroler: ")
         self.label.setFont(anton_font)
         self.label.setAlignment(Qt.AlignCenter)
 
         self.combobox = QComboBox(self)
         self.combobox.addItems(["ESP32", "Arduino", "ST32", "Raspberry Pi"])
         self.combobox.setFont(anton_font)
+        self.combobox.setFixedWidth(220)  # Adjust width as needed
 
         self.activate_button = QPushButton("Aktivacija")
-        self.activate_button.setFont(anton_font)
+        self.activate_button.setFixedWidth(70)
         self.stop_button = QPushButton("Prekid")
-        self.stop_button.setFont(anton_font)
+        self.stop_button.setFixedWidth(70)
 
         # Create widgets for the second group
         self.second_group_container = self.create_second_group_container()
@@ -40,7 +40,11 @@ class ControlWindow(QWidget):
         # Layouts
         top_layout = QVBoxLayout()
         top_layout.addWidget(self.label)
-        top_layout.addWidget(self.combobox)
+
+        combobox_layout = QHBoxLayout()
+        combobox_layout.addStretch(1)
+        combobox_layout.addWidget(self.combobox)
+        combobox_layout.addStretch(1)
 
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.activate_button)
@@ -49,9 +53,10 @@ class ControlWindow(QWidget):
         # Create a main layout and add the first group, buttons, and second group
         main_layout = QVBoxLayout()
         main_layout.addLayout(top_layout)
+        main_layout.addLayout(combobox_layout)  # Add combobox layout
         main_layout.addLayout(button_layout)
         main_layout.addSpacing(10)  # Add spacing between groups
-        main_layout.addWidget(self.second_group_container)  # Add the second group container
+        main_layout.addWidget(self.second_group_container, alignment=Qt.AlignCenter)  # Add the second group container with alignment
 
         self.setLayout(main_layout)
 
@@ -67,34 +72,34 @@ class ControlWindow(QWidget):
         form_layout = QFormLayout()
 
         # Define the width for QLineEdits
-        line_edit_width = 90  # Width in pixels (adjusted to be half)
+        line_edit_width = 90  # Width in pixels
 
         # Create labels and QLineEdits
-        self.temp_label = QLabel("Temperatura:")
-        self.temp_value = QLineEdit()
-        self.temp_value.setFixedWidth(line_edit_width)
-        self.temp_value.setAlignment(Qt.AlignCenter)
+        temp_label = QLabel("Temperatura:")
+        temp_value = QLineEdit()
+        temp_value.setFixedWidth(line_edit_width)
+        temp_value.setAlignment(Qt.AlignCenter)
 
-        self.humidity_label = QLabel("Vlaznost vazduha:")
-        self.humidity_value = QLineEdit()
-        self.humidity_value.setFixedWidth(line_edit_width)
-        self.humidity_value.setAlignment(Qt.AlignCenter)
+        humidity_label = QLabel("Vlaznost vazduha:")
+        humidity_value = QLineEdit()
+        humidity_value.setFixedWidth(line_edit_width)
+        humidity_value.setAlignment(Qt.AlignCenter)
 
-        self.soil_label = QLabel("Vlaznost zemlje:")
-        self.soil_value = QLineEdit()
-        self.soil_value.setFixedWidth(line_edit_width)
-        self.soil_value.setAlignment(Qt.AlignCenter)
+        soil_label = QLabel("Vlaznost zemlje:")
+        soil_value = QLineEdit()
+        soil_value.setFixedWidth(line_edit_width)
+        soil_value.setAlignment(Qt.AlignCenter)
 
-        self.fan_speed_label = QLabel("Brzina ventilatora(%):")
-        self.fan_speed_value = QLineEdit()
-        self.fan_speed_value.setFixedWidth(line_edit_width)
-        self.fan_speed_value.setAlignment(Qt.AlignCenter)
+        fan_speed_label = QLabel("Brzina ventilatora(%):")
+        fan_speed_value = QLineEdit()
+        fan_speed_value.setFixedWidth(line_edit_width)
+        fan_speed_value.setAlignment(Qt.AlignCenter)
 
         # Add labels and text boxes to the form layout
-        form_layout.addRow(self.temp_label, self.temp_value)
-        form_layout.addRow(self.humidity_label, self.humidity_value)
-        form_layout.addRow(self.soil_label, self.soil_value)
-        form_layout.addRow(self.fan_speed_label, self.fan_speed_value)
+        form_layout.addRow(temp_label, temp_value)
+        form_layout.addRow(humidity_label, humidity_value)
+        form_layout.addRow(soil_label, soil_value)
+        form_layout.addRow(fan_speed_label, fan_speed_value)
 
         # Optionally set read-only for QLineEdits
         for i in range(form_layout.rowCount()):
@@ -115,34 +120,11 @@ class ControlWindow(QWidget):
         return second_group_container
 
     def activate_system(self):
-        esp32_ip = "192.168.100.82"  # Replace with your ESP32 IP address
-        port = 12345
+        print("Aktivacija sistema clicked")
 
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.connect((esp32_ip, port))
-                s.sendall(b"GET / HTTP/1.1\r\n\r\n")
-                data = s.recv(1024).decode()
-                
-                if data:
-                    data_dict = self.parse_data(data)
-                    self.temp_value.setText(data_dict.get("Temperature", "N/A"))
-                    self.humidity_value.setText(data_dict.get("Humidity", "N/A"))
-                    self.soil_value.setText(data_dict.get("SoilMoisture", "N/A"))
-                    self.fan_speed_value.setText(data_dict.get("FanSpeed", "N/A"))
-        except Exception as e:
-            print(f"Error: {e}")
+app = QApplication(sys.argv)
 
-    def parse_data(self, data):
-        data_dict = {}
-        pairs = data.strip().split(',')
-        for pair in pairs:
-            key, value = pair.split(':')
-            data_dict[key.strip()] = value.strip()
-        return data_dict
+control_window = ControlWindow()
+control_window.show()
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    control_window = ControlWindow()
-    control_window.show()
-    sys.exit(app.exec())
+app.exec()
