@@ -1,4 +1,5 @@
 import sys
+import socket
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit
 )
@@ -61,8 +62,16 @@ class ControlWindow(QWidget):
         self.setLayout(main_layout)
 
         # Connect buttons to methods
-        self.activate_button.clicked.connect(self.activate_system)
+        self.activate_button.clicked.connect(self.fetch_data)
         self.stop_button.clicked.connect(self.close)
+
+        # Set up the socket connection
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.sock.connect(('192.168.100.82', 12345))  # Use the IP address and port of your ESP32
+        except Exception as e:
+            print(f"Failed to connect to ESP32: {e}")
+            return
 
     def create_second_group_container(self):
         # Create a QWidget to serve as the container for the second group
@@ -75,31 +84,27 @@ class ControlWindow(QWidget):
         line_edit_width = 90  # Width in pixels
 
         # Create labels and QLineEdits
-        temp_label = QLabel("Temperatura:")
-        temp_value = QLineEdit()
-        temp_value.setFixedWidth(line_edit_width)
-        temp_value.setAlignment(Qt.AlignCenter)
-
-        humidity_label = QLabel("Vlaznost vazduha:")
-        humidity_value = QLineEdit()
-        humidity_value.setFixedWidth(line_edit_width)
-        humidity_value.setAlignment(Qt.AlignCenter)
-
-        soil_label = QLabel("Vlaznost zemlje:")
-        soil_value = QLineEdit()
-        soil_value.setFixedWidth(line_edit_width)
-        soil_value.setAlignment(Qt.AlignCenter)
-
-        fan_speed_label = QLabel("Brzina ventilatora(%):")
-        fan_speed_value = QLineEdit()
-        fan_speed_value.setFixedWidth(line_edit_width)
-        fan_speed_value.setAlignment(Qt.AlignCenter)
+        self.temp_value = QLineEdit()
+        self.temp_value.setFixedWidth(line_edit_width)
+        self.temp_value.setAlignment(Qt.AlignCenter)
+        
+        self.humidity_value = QLineEdit()
+        self.humidity_value.setFixedWidth(line_edit_width)
+        self.humidity_value.setAlignment(Qt.AlignCenter)
+        
+        self.soil_value = QLineEdit()
+        self.soil_value.setFixedWidth(line_edit_width)
+        self.soil_value.setAlignment(Qt.AlignCenter)
+        
+        self.fan_speed_value = QLineEdit()
+        self.fan_speed_value.setFixedWidth(line_edit_width)
+        self.fan_speed_value.setAlignment(Qt.AlignCenter)
 
         # Add labels and text boxes to the form layout
-        form_layout.addRow(temp_label, temp_value)
-        form_layout.addRow(humidity_label, humidity_value)
-        form_layout.addRow(soil_label, soil_value)
-        form_layout.addRow(fan_speed_label, fan_speed_value)
+        form_layout.addRow(QLabel("Temperatura:"), self.temp_value)
+        form_layout.addRow(QLabel("Vlaznost vazduha:"), self.humidity_value)
+        form_layout.addRow(QLabel("Vlaznost zemlje:"), self.soil_value)
+        form_layout.addRow(QLabel("Brzina ventilatora(%):"), self.fan_speed_value)
 
         # Optionally set read-only for QLineEdits
         for i in range(form_layout.rowCount()):
@@ -119,12 +124,22 @@ class ControlWindow(QWidget):
 
         return second_group_container
 
-    def activate_system(self):
-        print("Aktivacija sistema clicked")
+    def fetch_data(self):
+        try:
+            self.sock.sendall(b'GET_DATA')  # Send a request to the ESP32
+            data = self.sock.recv(1024).decode()  # Receive the data
+            if data:
+                # Split data and update the corresponding QLineEdits
+                parts = data.split()
+                if len(parts) == 4:
+                    self.temp_value.setText(parts[0].split(':')[1])
+                    self.humidity_value.setText(parts[1].split(':')[1])
+                    self.soil_value.setText(parts[2].split(':')[1])
+                    self.fan_speed_value.setText(parts[3].split(':')[1])
+        except Exception as e:
+            print(f"Error fetching data: {e}")
 
 app = QApplication(sys.argv)
-
 control_window = ControlWindow()
 control_window.show()
-
 app.exec()
