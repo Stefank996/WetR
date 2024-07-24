@@ -9,7 +9,6 @@ const int port = 12345; // Port to listen on
 
 WiFiServer server(port);
 
-
 // Definicije pinova
 #define DHTPIN 14
 #define DHTTYPE DHT11
@@ -22,10 +21,7 @@ WiFiServer server(port);
 // Inicijalizacija DHT senzora
 DHT dht(DHTPIN, DHTTYPE);
 
-/* Soil moisture sensor O/P pin */
-
 void setup() {
-  
   Serial.begin(921600);
   WiFi.begin(ssid, password);
 
@@ -36,7 +32,6 @@ void setup() {
   
   Serial.println("Connected to WiFi");
   server.begin();
-
 
   // Inicijalizacija DHT senzora
   dht.begin();
@@ -63,17 +58,29 @@ void loop() {
   int fanSpeed = calculateFanSpeed(temperature);
   analogWrite(FAN_PWM_PIN, fanSpeed);
   int fanSpeedPercentage = map(fanSpeed, 0, 255, 0, 100);
- 
 
+  // Priprema podataka za slanje
+  String data = String("T:") + String(temperature, 2) + " H:" + String(humidity, 2) + " S:" + String(soilMoisturePercent, 2) + " F:" + String(fanSpeedPercentage);
+  
+  // Slanje podataka svim povezanim klijentima
+  WiFiClient client = server.available();
+  if (client) {
+    client.println(data);
+  }
+  
+  // Ispisivanje podataka na serijskom portu
+  Serial.print("Snaga ventilatora:");
+  Serial.print(" (");
+  Serial.print(fanSpeedPercentage);
+  Serial.println("%)");
+  
   if (soilValue > THRESHOLD)
     Serial.print("Suva zemlja! ");
   else
     Serial.print("Vlažna zemlja! ");
- 
-    Serial.print(soilMoisturePercent);
-    Serial.println("%");
-
-  delay(500);
+  
+  Serial.print(soilMoisturePercent);
+  Serial.println("%");
 
   if (isnan(humidity) || isnan(temperature)) {
     Serial.println("Greška pri čitanju sa DHT senzora!");
@@ -83,7 +90,6 @@ void loop() {
     digitalWrite(RED_LED_PIN, LOW);   // Ugasi crvenu LED
     digitalWrite(WHITE_LED_PIN, HIGH); // Upali belu LED
 
-    // Ispisivanje očitanih vrednosti
     Serial.println("====================");
     Serial.print("Vlažnost vazduha: ");
     Serial.print(humidity);
@@ -91,14 +97,8 @@ void loop() {
     Serial.print("Temperatura: ");
     Serial.print(temperature);
     Serial.println(" *C");
-
- 
   }
-
-  Serial.print("Snaga ventilatora:");
-  Serial.print(" (");
-  Serial.print(fanSpeedPercentage);
-  Serial.println("%)");
+  
   Serial.println("====================");
   
   delay(3000);
