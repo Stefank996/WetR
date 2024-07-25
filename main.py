@@ -147,6 +147,7 @@ class ControlWindow(QWidget):
         if self.sock:
             self.sock.close()
             self.sock = None
+        QApplication.quit()  # Close the application
 
     def connect_to_esp32(self):
         if self.sock:
