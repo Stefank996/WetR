@@ -2,12 +2,15 @@
 #include <DHT.h>
 #include <DHT_U.h>
 #include <WiFi.h>
+#include <PubSubClient.h>
 
+// WiFi i MQTT podešavanja
 const char* ssid = "xs 2.4";
 const char* password = "kzskjkmk7026";
-const int port = 12345; // Port to listen on
+const char* mqtt_server = "192.168.100.33"; // IP adresa tvog lokalnog MQTT brokera
 
-WiFiServer server(port);
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 // Definicije pinova
 #define DHTPIN 14
@@ -17,6 +20,9 @@ WiFiServer server(port);
 #define WHITE_LED_PIN 12
 #define SOIL_SENSOR_PIN 27
 #define THRESHOLD 2800
+#define BUZZER_PIN 25 // Dodao sam pin za buzzer
+
+bool fanOn = true; // Promenljiva za praćenje stanja ventilatora
 
 // Inicijalizacija DHT senzora
 DHT dht(DHTPIN, DHTTYPE);
@@ -31,7 +37,9 @@ void setup() {
   }
   
   Serial.println("Connected to WiFi");
-  server.begin();
+
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
 
   // Inicijalizacija DHT senzora
   dht.begin();
@@ -43,10 +51,19 @@ void setup() {
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(WHITE_LED_PIN, OUTPUT);
 
+  // Podešavanje buzzer pina
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
   Serial.println("DHT11 i Ventilator kontrola");
 }
 
 void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
   // Čitanje temperature i vlage
   float humidity = dht.readHumidity();
   float temperature = dht.readTemperature();
@@ -54,19 +71,16 @@ void loop() {
   // Čitanje vrednosti senzora za vlažnost zemljišta
   int soilValue = analogRead(SOIL_SENSOR_PIN); // read the analog value from sensor
   float soilMoisturePercent = map(soilValue, 4095, 0, 0, 100); // map to percentage
-      
-  int fanSpeed = calculateFanSpeed(temperature);
+
+  int fanSpeed = fanOn ? calculateFanSpeed(temperature) : 0; // Ako je ventilator isključen, brzina je 0
   analogWrite(FAN_PWM_PIN, fanSpeed);
   int fanSpeedPercentage = map(fanSpeed, 0, 255, 0, 100);
 
   // Priprema podataka za slanje
   String data = String("T:") + String(temperature, 2) + " H:" + String(humidity, 2) + " S:" + String(soilMoisturePercent, 2) + " F:" + String(fanSpeedPercentage);
   
-  // Slanje podataka svim povezanim klijentima
-  WiFiClient client = server.available();
-  if (client) {
-    client.println(data);
-  }
+  // Slanje podataka putem MQTT-a
+  client.publish("sensor/data", data.c_str());
   
   // Ispisivanje podataka na serijskom portu
   Serial.print("Snaga ventilatora:");
@@ -114,5 +128,42 @@ int calculateFanSpeed(float temperature) {
     return 77; // 30% brzine
   } else {
     return 30; // Ventilator isključen
+  }
+}
+
+void callback(char* topic, byte* message, unsigned int length) {
+  String msg;
+  for (int i = 0; i < length; i++) {
+    msg += (char)message[i];
+  }
+  Serial.print("Message arrived on topic: ");
+  Serial.print(topic);
+  Serial.print(". Message: ");
+  Serial.println(msg);
+
+  // Ako je primljena poruka "TOGGLE", aktiviraj/deaktiviraj sirenu
+  if (String(topic) == "buzzer/control" && msg == "TOGGLE") {
+    digitalWrite(BUZZER_PIN, !digitalRead(BUZZER_PIN));
+  }
+
+  // Ako je primljena poruka "TOGGLE", aktiviraj/deaktiviraj ventilator
+  if (String(topic) == "fan/control" && msg == "TOGGLE") {
+    fanOn = !fanOn;
+  }
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Connecting to MQTT...");
+    if (client.connect("ESP32Client")) {
+      Serial.println("connected");
+      client.subscribe("buzzer/control");
+      client.subscribe("fan/control");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      delay(5000);
+    }
   }
 }

@@ -1,5 +1,5 @@
 import sys
-import socket
+import paho.mqtt.client as mqtt
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QComboBox, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit
 )
@@ -10,7 +10,7 @@ class ControlWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("WetR App by Stefan Karaga")
-        self.setFixedSize(QSize(400, 350))
+        self.setFixedSize(QSize(400, 400))
 
         # Load custom font
         font_id = QFontDatabase.addApplicationFont(r"C:\Users\Stefan\Documents\Arduino\priums2\BebasNeue-Regular.ttf")
@@ -70,13 +70,17 @@ class ControlWindow(QWidget):
         self.activate_button.clicked.connect(self.start_fetching_data)
         self.stop_button.clicked.connect(self.stop_fetching_data)
         self.siren_button.clicked.connect(self.toggle_siren)
+        self.fan_button.clicked.connect(self.toggle_fan)
+
+        # MQTT client setup
+        self.mqtt_client = mqtt.Client()
+        self.mqtt_client.on_connect = self.on_connect
+        self.mqtt_client.on_message = self.on_message
+        self.mqtt_client.connect("192.168.100.33", 1883, 60)
 
         # Timer for periodic data fetching
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.fetch_data)
-
-        # Initialize socket
-        self.sock = None
 
     def create_second_group_container(self):
         # Create a QWidget to serve as the container for the second group
@@ -120,55 +124,49 @@ class ControlWindow(QWidget):
         # Create a QWidget to serve as the container for the third group
         third_group_container = QWidget()
 
-        # Create a QHBoxLayout for the third group
-        hbox_layout = QHBoxLayout()
+        # Create a QVBoxLayout for the third group
+        vbox_layout = QVBoxLayout()
 
         # Create and configure the siren button
         self.siren_button = QPushButton("Uključi / Isključi Sirenu")
         self.siren_button.setFixedWidth(200)
         self.siren_button.setFont(QFont("Arial", 12))
         
-        # Add the button to the layout
-        hbox_layout.addStretch(1)
-        hbox_layout.addWidget(self.siren_button)
-        hbox_layout.addStretch(1)
+        # Create and configure the fan button
+        self.fan_button = QPushButton("Vent. Off/On")
+        self.fan_button.setFixedWidth(200)
+        self.fan_button.setFont(QFont("Arial", 12))
+        
+        # Add the buttons to the layout
+        vbox_layout.addStretch(1)
+        vbox_layout.addWidget(self.siren_button)
+        vbox_layout.addWidget(self.fan_button)
+        vbox_layout.addStretch(1)
 
         # Set the layout for the third group container
-        third_group_container.setLayout(hbox_layout)
+        third_group_container.setLayout(vbox_layout)
 
         return third_group_container
 
     def start_fetching_data(self):
-        self.connect_to_esp32()
+        self.mqtt_client.loop_start()
         self.timer.start(3000)  # Fetch data every 3 seconds
 
     def stop_fetching_data(self):
         self.timer.stop()
-        if self.sock:
-            self.sock.close()
-            self.sock = None
+        self.mqtt_client.loop_stop()
         QApplication.quit()  # Close the application
 
-    def connect_to_esp32(self):
-        if self.sock:
-            self.sock.close()
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            self.sock.connect(('192.168.100.82', 12345))  # Use the IP address and port of your ESP32
-        except Exception as e:
-            print(f"Failed to connect to ESP32: {e}")
-            self.sock = None
-
     def fetch_data(self):
-        if self.sock:
-            try:
-                self.sock.sendall(b'GET_DATA')  # Send request to ESP32
-                data = self.sock.recv(1024).decode('utf-8').strip()
-                if data:
-                    self.update_ui(data)
-            except socket.error as e:
-                print(f"Error fetching data: {e}")
-                self.connect_to_esp32()  # Try to reconnect if there is an error
+        self.mqtt_client.publish("sensor/request", "GET_DATA")
+
+    def on_connect(self, client, userdata, flags, rc):
+        print("Connected to MQTT broker with result code " + str(rc))
+        client.subscribe("sensor/data")
+
+    def on_message(self, client, userdata, msg):
+        data = msg.payload.decode('utf-8').strip()
+        self.update_ui(data)
 
     def update_ui(self, data):
         print(f"Received data: {data}")
@@ -187,12 +185,10 @@ class ControlWindow(QWidget):
             print(f"Error parsing data: {e}")
 
     def toggle_siren(self):
-        if self.sock:
-            try:
-                self.sock.sendall(b'TOGGLE_SIREN')  # Send command to toggle siren
-            except socket.error as e:
-                print(f"Error sending siren command: {e}")
-                self.connect_to_esp32()  # Try to reconnect if there is an error
+        self.mqtt_client.publish("buzzer/control", "TOGGLE")
+
+    def toggle_fan(self):
+        self.mqtt_client.publish("fan/control", "TOGGLE")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
